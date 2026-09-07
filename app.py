@@ -2,142 +2,133 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 
 st.set_page_config(
-    page_title="Alpha Terminal Pro V3",
+    page_title="Alpha Terminal Pro V4",
     page_icon="⚡",
     layout="wide"
 )
 
-# -----------------------------
-# CSS
-# -----------------------------
+# =========================================================
+# UI / CSS
+# =========================================================
 st.markdown("""
 <style>
     .main { background-color: #0b0f19; }
     .stApp { background-color: #0b0f19; color: #f8fafc; }
 
-    .macro-card, .signal-card {
+    .card {
         background-color: #131b2e;
         border: 1px solid #233252;
-        border-radius: 12px;
+        border-radius: 14px;
         padding: 14px 16px;
         margin-bottom: 12px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.35);
     }
 
-    .macro-title {
-        color: #38bdf8 !important;
-        font-size: 14px !important;
-        font-weight: 700 !important;
+    .title-blue {
+        color:#38bdf8;
+        font-size:14px;
+        font-weight:700;
     }
 
-    .macro-val {
-        color: #ffffff !important;
-        font-size: 24px !important;
-        font-weight: 800 !important;
-        font-family: monospace;
+    .big {
+        color:#fff;
+        font-size:22px;
+        font-weight:800;
     }
 
-    .up-green { color: #4ade80 !important; font-weight: bold; }
-    .down-red { color: #f87171 !important; font-weight: bold; }
-
-    .status-banner {
-        padding: 16px;
-        border-radius: 10px;
-        font-size: 18px;
-        font-weight: 800;
-        text-align: center;
+    .small {
+        color:#cbd5e1;
+        font-size:13px;
     }
 
-    .bullish-bg {
-        background: #064e3b;
-        color: #6ee7b7;
-        border: 1px solid #059669;
+    .green { color:#4ade80; font-weight:800; }
+    .red { color:#f87171; font-weight:800; }
+    .yellow { color:#facc15; font-weight:800; }
+
+    .banner {
+        padding:16px;
+        border-radius:12px;
+        font-size:18px;
+        font-weight:800;
+        text-align:center;
     }
 
-    .bearish-bg {
-        background: #881337;
-        color: #fecdd3;
-        border: 1px solid #e11d48;
-    }
+    .bull { background:#064e3b; color:#6ee7b7; border:1px solid #059669; }
+    .bear { background:#881337; color:#fecdd3; border:1px solid #e11d48; }
+    .neutral { background:#78350f; color:#fef08a; border:1px solid #d97706; }
 
-    .neutral-bg {
-        background: #78350f;
-        color: #fef08a;
-        border: 1px solid #d97706;
-    }
-
-    .buy { color: #4ade80; font-weight: 800; }
-    .sell { color: #f87171; font-weight: 800; }
-    .wait { color: #facc15; font-weight: 800; }
-
-    div[data-testid="stRadio"] > label {
-        color: #38bdf8 !important;
-        font-size: 16px !important;
-        font-weight: 700 !important;
-    }
-
-    div[data-testid="stRadio"] div[role="radiogroup"] label {
-        background-color: #131b2e !important;
-        padding: 6px 14px !important;
-        border-radius: 8px !important;
-        border: 1px solid #233252 !important;
-        margin-right: 10px !important;
+    .hero {
+        background:#101827;
+        border:1px solid #233252;
+        border-radius:16px;
+        padding:18px;
+        margin-bottom:14px;
     }
 
     @media (max-width: 768px) {
-        .macro-val { font-size: 20px !important; }
-        .status-banner { font-size: 15px; padding: 12px; }
+        .big { font-size:18px; }
+        .banner { font-size:15px; padding:12px; }
     }
 </style>
 """, unsafe_allow_html=True)
 
-# -----------------------------
+# =========================================================
 # HEADER
-# -----------------------------
+# =========================================================
 h1, h2 = st.columns([3, 1])
 with h1:
+    st.markdown("<h1 style='color:#38bdf8;margin:0;'>⚡ ALPHA TERMINAL PRO V4</h1>", unsafe_allow_html=True)
     st.markdown(
-        "<h1 style='color:#38bdf8;margin:0;'>⚡ ALPHA TERMINAL PRO V3</h1>",
-        unsafe_allow_html=True
-    )
-    st.markdown(
-        "<p style='color:#94a3b8;font-size:14px;margin:0;'>सोप्या भाषेत — आज काय घ्यायचं, काय विकायचं आणि कधी थांबायचं</p>",
+        "<p style='color:#94a3b8;margin:0;'>सोप्या भाषेत — आज काय घ्यायचं, काय विकायचं, आणि कधी थांबायचं</p>",
         unsafe_allow_html=True
     )
 with h2:
-    current_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+    now = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
     st.markdown(
-        f"<div style='text-align:right;'>🟢 <b style='color:#22c55e;'>LIVE</b>"
-        f"<br><span style='color:#94a3b8;font-size:12px;'>{current_time}</span></div>",
+        f"<div style='text-align:right;'>🟢 <b style='color:#22c55e;'>LIVE</b><br>"
+        f"<span style='color:#94a3b8;font-size:12px;'>{now}</span></div>",
         unsafe_allow_html=True
     )
 
 st.write("---")
 
-# -----------------------------
-# DATA FUNCTIONS
-# -----------------------------
-@st.cache_data(ttl=120)
-def get_market_data(ticker):
+# =========================================================
+# HELPERS
+# =========================================================
+def sf(v, default=0.0):
     try:
-        df = yf.Ticker(ticker).history(period="5d", interval="1d")
-        if len(df) >= 2:
-            prev_close = float(df["Close"].iloc[-2])
-            current = float(df["Close"].iloc[-1])
-            pct = ((current - prev_close) / prev_close) * 100
-            return round(current, 2), round(pct, 2)
-        elif len(df) == 1:
-            return round(float(df["Close"].iloc[-1]), 2), 0.0
-    except Exception:
-        pass
-    return 0.0, 0.0
-
+        if pd.isna(v):
+            return default
+        return float(v)
+    except:
+        return default
 
 @st.cache_data(ttl=120)
-def get_intraday_data(ticker):
+def get_daily(ticker, period="3mo"):
+    try:
+        df = yf.download(
+            ticker,
+            period=period,
+            interval="1d",
+            progress=False,
+            auto_adjust=False,
+            threads=False
+        )
+        if df.empty:
+            return pd.DataFrame()
+
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        return df.dropna().copy()
+    except:
+        return pd.DataFrame()
+
+@st.cache_data(ttl=120)
+def get_intraday(ticker):
     try:
         df = yf.download(
             ticker,
@@ -147,24 +138,23 @@ def get_intraday_data(ticker):
             auto_adjust=False,
             threads=False
         )
-
         if df.empty:
             return pd.DataFrame()
 
-        # Handle yfinance MultiIndex output
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
-        needed = ["Open", "High", "Low", "Close", "Volume"]
-        if any(c not in df.columns for c in needed):
+        cols = ["Open","High","Low","Close","Volume"]
+        if any(c not in df.columns for c in cols):
             return pd.DataFrame()
 
-        df = df.dropna(subset=["Open", "High", "Low", "Close"]).copy()
+        df = df.dropna(subset=["Open","High","Low","Close"]).copy()
 
-        # Technical indicators
+        # EMA
         df["EMA9"] = df["Close"].ewm(span=9, adjust=False).mean()
         df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
 
+        # RSI
         delta = df["Close"].diff()
         gain = delta.clip(lower=0)
         loss = -delta.clip(upper=0)
@@ -173,16 +163,18 @@ def get_intraday_data(ticker):
         rs = avg_gain / avg_loss.replace(0, np.nan)
         df["RSI"] = 100 - (100 / (1 + rs))
 
-        typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
-        session_date = pd.Series(df.index.date, index=df.index)
-
-        pv = typical_price * df["Volume"]
-        df["CumPV"] = pv.groupby(session_date).cumsum()
-        df["CumVol"] = df["Volume"].groupby(session_date).cumsum()
+        # VWAP
+        tp = (df["High"] + df["Low"] + df["Close"]) / 3
+        session = pd.Series(df.index.date, index=df.index)
+        pv = tp * df["Volume"]
+        df["CumPV"] = pv.groupby(session).cumsum()
+        df["CumVol"] = df["Volume"].groupby(session).cumsum()
         df["VWAP"] = df["CumPV"] / df["CumVol"].replace(0, np.nan)
 
+        # Volume
         df["VolAvg20"] = df["Volume"].rolling(20).mean()
 
+        # ATR
         tr1 = df["High"] - df["Low"]
         tr2 = (df["High"] - df["Close"].shift()).abs()
         tr3 = (df["Low"] - df["Close"].shift()).abs()
@@ -190,531 +182,679 @@ def get_intraday_data(ticker):
         df["ATR14"] = tr.rolling(14).mean()
 
         return df
-    except Exception:
+    except:
         return pd.DataFrame()
 
-
-def safe_float(v, default=0.0):
-    try:
-        if pd.isna(v):
-            return default
-        return float(v)
-    except Exception:
-        return default
-
-
-def draw_card(label, val, chg, reverse=False):
-    up = chg >= 0
-    css = ("down-red" if up else "up-green") if reverse else ("up-green" if up else "down-red")
-    symbol = "↑" if up else "↓"
-    return f"""
-    <div class="macro-card">
-        <div class="macro-title">{label}</div>
-        <div class="macro-val">{val}</div>
-        <div class="{css}">{symbol} {chg:.2f}%</div>
-    </div>
+@st.cache_data(ttl=300)
+def get_news_sentiment(ticker):
     """
+    Lightweight keyword-based sentiment from Yahoo Finance news headlines.
+    No external API key required.
+    """
+    positive_words = [
+        "surge","gain","rise","beat","growth","profit","strong","upgrade","record",
+        "buy","bullish","outperform","wins","order","expansion","approval","positive"
+    ]
+    negative_words = [
+        "fall","drop","loss","weak","downgrade","sell","bearish","fraud","probe",
+        "decline","miss","cut","negative","lawsuit","debt","warning","crash"
+    ]
 
+    try:
+        items = yf.Ticker(ticker).news or []
+        if not items:
+            return 0, "बातम्यांचा स्पष्ट संकेत नाही", []
 
-def analyze_stock(name, ticker, market_mood):
-    df = get_intraday_data(ticker)
+        score = 0
+        used = []
+        for n in items[:8]:
+            title = ""
+            if isinstance(n, dict):
+                title = n.get("title", "") or ""
+                if not title and isinstance(n.get("content"), dict):
+                    title = n["content"].get("title", "") or ""
 
-    if df.empty or len(df) < 25:
-        p, c = get_market_data(ticker)
+            if not title:
+                continue
+
+            low = title.lower()
+            p = sum(1 for w in positive_words if w in low)
+            m = sum(1 for w in negative_words if w in low)
+            score += p - m
+            used.append(title)
+
+        if score >= 2:
+            return 2, "बातम्या सकारात्मक दिसतात", used[:3]
+        elif score <= -2:
+            return -2, "बातम्या नकारात्मक दिसतात", used[:3]
+        return 0, "बातम्या मिश्र / तटस्थ आहेत", used[:3]
+    except:
+        return 0, "बातम्या मिळाल्या नाहीत", []
+
+def pct_change_from_daily(ticker):
+    df = get_daily(ticker, "10d")
+    if len(df) < 2:
+        return 0.0, 0.0
+    cur = sf(df["Close"].iloc[-1])
+    prev = sf(df["Close"].iloc[-2])
+    pct = ((cur - prev) / prev * 100) if prev else 0
+    return round(cur, 2), round(pct, 2)
+
+# =========================================================
+# GLOBAL / MACRO ENGINE
+# =========================================================
+macro_map = {
+    "S&P 500": "^GSPC",
+    "NASDAQ": "^IXIC",
+    "DOW": "^DJI",
+    "NIFTY 50": "^NSEI",
+    "BANK NIFTY": "^NSEBANK",
+    "INDIA VIX": "^INDIAVIX",
+    "CRUDE OIL": "CL=F",
+    "GOLD": "GC=F",
+    "USD/INR": "INR=X",
+}
+
+macro = {}
+for label, ticker in macro_map.items():
+    p, c = pct_change_from_daily(ticker)
+    macro[label] = {"price": p, "change": c}
+
+market_score = 0
+market_reasons = []
+
+if macro["S&P 500"]["change"] > 0.3:
+    market_score += 2
+    market_reasons.append("US market सकारात्मक")
+elif macro["S&P 500"]["change"] < -0.3:
+    market_score -= 2
+    market_reasons.append("US market कमकुवत")
+
+if macro["NASDAQ"]["change"] > 0.4:
+    market_score += 1
+elif macro["NASDAQ"]["change"] < -0.4:
+    market_score -= 1
+
+if macro["NIFTY 50"]["change"] > 0.35:
+    market_score += 2
+    market_reasons.append("Nifty मजबूत")
+elif macro["NIFTY 50"]["change"] < -0.35:
+    market_score -= 2
+    market_reasons.append("Nifty कमकुवत")
+
+if macro["BANK NIFTY"]["change"] > 0.35:
+    market_score += 1
+elif macro["BANK NIFTY"]["change"] < -0.35:
+    market_score -= 1
+
+if macro["INDIA VIX"]["change"] > 5:
+    market_score -= 2
+    market_reasons.append("बाजारातील भीती वाढली")
+elif macro["INDIA VIX"]["change"] < -5:
+    market_score += 1
+
+if macro["CRUDE OIL"]["change"] > 1.5:
+    market_score -= 1
+    market_reasons.append("Crude वाढले")
+elif macro["CRUDE OIL"]["change"] < -1.5:
+    market_score += 1
+
+if macro["USD/INR"]["change"] > 0.5:
+    market_score -= 1
+
+if market_score >= 4:
+    market_mood = "BULLISH"
+    risk_level = "मध्यम"
+    market_text = "🟢 बाजार खरेदीकडे झुकलेला"
+elif market_score <= -4:
+    market_mood = "BEARISH"
+    risk_level = "जास्त"
+    market_text = "🔴 बाजार विक्रीकडे झुकलेला"
+else:
+    market_mood = "NEUTRAL"
+    risk_level = "मध्यम ते जास्त"
+    market_text = "🟡 बाजार स्पष्ट दिशेत नाही"
+
+# =========================================================
+# SECTOR STRENGTH
+# =========================================================
+sector_map = {
+    "METAL": "^CNXMETAL",
+    "BANK": "^NSEBANK",
+    "IT": "^CNXIT",
+    "ENERGY": "^CNXENERGY",
+    "FMCG": "^CNXFMCG",
+    "AUTO": "^CNXAUTO",
+    "PHARMA": "^CNXPHARMA",
+}
+
+sector_change = {}
+for sector, ticker in sector_map.items():
+    _, c = pct_change_from_daily(ticker)
+    sector_change[sector] = c
+
+# =========================================================
+# STOCK UNIVERSE (large practical set)
+# =========================================================
+stocks = {
+    "Tata Steel": ("TATASTEEL.NS", "METAL"),
+    "JSW Steel": ("JSWSTEEL.NS", "METAL"),
+    "Hindalco": ("HINDALCO.NS", "METAL"),
+    "BEL": ("BEL.NS", "OTHER"),
+    "ONGC": ("ONGC.NS", "ENERGY"),
+    "Reliance": ("RELIANCE.NS", "ENERGY"),
+    "Coal India": ("COALINDIA.NS", "ENERGY"),
+    "Power Grid": ("POWERGRID.NS", "ENERGY"),
+    "NTPC": ("NTPC.NS", "ENERGY"),
+    "SBI": ("SBIN.NS", "BANK"),
+    "HDFC Bank": ("HDFCBANK.NS", "BANK"),
+    "ICICI Bank": ("ICICIBANK.NS", "BANK"),
+    "Axis Bank": ("AXISBANK.NS", "BANK"),
+    "Kotak Bank": ("KOTAKBANK.NS", "BANK"),
+    "Infosys": ("INFY.NS", "IT"),
+    "TCS": ("TCS.NS", "IT"),
+    "Wipro": ("WIPRO.NS", "IT"),
+    "HCL Tech": ("HCLTECH.NS", "IT"),
+    "Tech Mahindra": ("TECHM.NS", "IT"),
+    "ITC": ("ITC.NS", "FMCG"),
+    "HUL": ("HINDUNILVR.NS", "FMCG"),
+    "Nestle India": ("NESTLEIND.NS", "FMCG"),
+    "Maruti": ("MARUTI.NS", "AUTO"),
+    "Tata Motors": ("TATAMOTORS.NS", "AUTO"),
+    "M&M": ("M&M.NS", "AUTO"),
+    "Sun Pharma": ("SUNPHARMA.NS", "PHARMA"),
+    "Dr Reddy": ("DRREDDY.NS", "PHARMA"),
+    "Cipla": ("CIPLA.NS", "PHARMA"),
+    "L&T": ("LT.NS", "OTHER"),
+    "Bharti Airtel": ("BHARTIARTL.NS", "OTHER"),
+    "Adani Ports": ("ADANIPORTS.NS", "OTHER"),
+    "Titan": ("TITAN.NS", "OTHER"),
+}
+
+# =========================================================
+# ANALYSIS ENGINE
+# =========================================================
+def analyze_intraday(name, ticker, sector):
+    df = get_intraday(ticker)
+    news_score, news_text, headlines = get_news_sentiment(ticker)
+
+    if df.empty or len(df) < 30:
+        price, day_change = pct_change_from_daily(ticker)
         return {
-            "name": name, "ticker": ticker, "price": p, "change": c,
-            "signal": "WAIT", "confidence": 0, "score": 0,
-            "entry": p, "sl": p, "t1": p, "t2": p, "rr": 0,
-            "rsi": 0, "vwap": 0, "ema9": 0, "ema20": 0,
-            "vol_ratio": 0, "reason": "Insufficient intraday data",
-            "trend": "NO DATA"
+            "name": name, "ticker": ticker, "sector": sector,
+            "price": price, "signal": "WAIT", "score": 0,
+            "confidence": 25, "entry": price, "sl": price, "t1": price, "t2": price,
+            "rsi": 0, "vol_ratio": 0, "reason": "डेटा अपुरा आहे",
+            "news": news_text, "headlines": headlines
         }
 
     x = df.iloc[-1]
     prev = df.iloc[-2]
 
-    price = safe_float(x["Close"])
-    ema9 = safe_float(x["EMA9"])
-    ema20 = safe_float(x["EMA20"])
-    rsi = safe_float(x["RSI"], 50)
-    vwap = safe_float(x["VWAP"])
-    atr = safe_float(x["ATR14"], max(price * 0.005, 0.1))
-    volume = safe_float(x["Volume"])
-    vol_avg = safe_float(x["VolAvg20"])
-    vol_ratio = (volume / vol_avg) if vol_avg > 0 else 0
-
-    day_open = safe_float(df.iloc[-1]["Open"])
-    pct = ((price - day_open) / day_open * 100) if day_open else 0
+    price = sf(x["Close"])
+    ema9 = sf(x["EMA9"])
+    ema20 = sf(x["EMA20"])
+    vwap = sf(x["VWAP"])
+    rsi = sf(x["RSI"], 50)
+    atr = sf(x["ATR14"], max(price * 0.005, 0.1))
+    volume = sf(x["Volume"])
+    volavg = sf(x["VolAvg20"])
+    vol_ratio = volume / volavg if volavg > 0 else 0
 
     score = 0
-    reasons = []
+    why = []
 
-    # Market mood contribution
+    # 1) Global/market
     if market_mood == "BULLISH":
         score += 1
-        reasons.append("Market bullish")
+        why.append("एकूण बाजार सकारात्मक")
     elif market_mood == "BEARISH":
         score -= 1
-        reasons.append("Market bearish")
+        why.append("एकूण बाजार कमकुवत")
 
-    # VWAP
+    # 2) Sector
+    sec = sector_change.get(sector, 0)
+    if sec > 0.5:
+        score += 2
+        why.append("या क्षेत्रात ताकद आहे")
+    elif sec < -0.5:
+        score -= 2
+        why.append("या क्षेत्रावर दबाव आहे")
+
+    # 3) VWAP
     if price > vwap:
         score += 2
-        reasons.append("Above VWAP")
+        why.append("शेअरवर खरेदीची बाजू मजबूत")
     elif price < vwap:
         score -= 2
-        reasons.append("Below VWAP")
+        why.append("शेअरवर विक्रीची बाजू मजबूत")
 
-    # EMA trend
+    # 4) EMA
     if ema9 > ema20:
         score += 2
-        reasons.append("EMA9 > EMA20")
     elif ema9 < ema20:
         score -= 2
-        reasons.append("EMA9 < EMA20")
 
-    # Momentum RSI
+    # 5) RSI
     if 55 <= rsi <= 72:
         score += 1
-        reasons.append("RSI bullish")
     elif 28 <= rsi <= 45:
         score -= 1
-        reasons.append("RSI bearish")
     elif rsi > 78:
         score -= 1
-        reasons.append("RSI overbought")
+        why.append("भाव जास्त चढलेला आहे")
     elif rsi < 22:
         score += 1
-        reasons.append("RSI oversold")
 
-    # Volume confirmation
+    # 6) Volume
     if vol_ratio >= 1.5:
-        if price > safe_float(prev["Close"]):
+        if price > sf(prev["Close"]):
             score += 2
-            reasons.append("Strong buying volume")
-        elif price < safe_float(prev["Close"]):
+            why.append("जास्त खरेदीचे व्यवहार")
+        else:
             score -= 2
-            reasons.append("Strong selling volume")
-    elif vol_ratio >= 1.1:
-        if price > safe_float(prev["Close"]):
-            score += 1
-        elif price < safe_float(prev["Close"]):
-            score -= 1
+            why.append("जास्त विक्रीचे व्यवहार")
 
-    # Short-term breakout / breakdown
-    recent = df.iloc[-7:-1]
-    if len(recent) >= 3:
-        recent_high = safe_float(recent["High"].max())
-        recent_low = safe_float(recent["Low"].min())
-        if price > recent_high:
+    # 7) Breakout / breakdown
+    recent = df.iloc[-8:-1]
+    if len(recent) >= 4:
+        hi = sf(recent["High"].max())
+        lo = sf(recent["Low"].min())
+        if price > hi:
             score += 2
-            reasons.append("Breakout")
-        elif price < recent_low:
+            why.append("वरचा अडथळा तोडला")
+        elif price < lo:
             score -= 2
-            reasons.append("Breakdown")
+            why.append("खालचा आधार तुटला")
 
-    # Convert score to signal
-    if score >= 6:
+    # 8) News
+    score += news_score
+    if news_score > 0:
+        why.append("बातम्या सकारात्मक")
+    elif news_score < 0:
+        why.append("बातम्या नकारात्मक")
+
+    # final intraday signal
+    if score >= 7:
         signal = "STRONG BUY"
-    elif score >= 3:
+    elif score >= 4:
         signal = "BUY"
-    elif score <= -6:
+    elif score <= -7:
         signal = "STRONG SELL"
-    elif score <= -3:
+    elif score <= -4:
         signal = "SELL"
     else:
         signal = "WAIT"
 
-    confidence = int(min(95, 50 + abs(score) * 7)) if signal != "WAIT" else int(max(20, 50 - abs(score) * 5))
+    confidence = min(95, 50 + abs(score) * 6) if signal != "WAIT" else max(20, 45 - abs(score) * 4)
 
-    # Entry, SL, targets based on ATR
-    if signal in ["BUY", "STRONG BUY"]:
+    # NO TRADE protection
+    if market_mood == "NEUTRAL" and abs(score) < 6:
+        signal = "WAIT"
+
+    # levels
+    if signal in ["BUY","STRONG BUY"]:
         entry = price
-        sl = price - (1.2 * atr)
+        sl = price - 1.2 * atr
         risk = max(entry - sl, 0.01)
-        t1 = entry + (1.5 * risk)
-        t2 = entry + (2.2 * risk)
-        rr = (t2 - entry) / risk
-        trend = "BULLISH"
-    elif signal in ["SELL", "STRONG SELL"]:
+        t1 = entry + 1.5 * risk
+        t2 = entry + 2.2 * risk
+    elif signal in ["SELL","STRONG SELL"]:
         entry = price
-        sl = price + (1.2 * atr)
+        sl = price + 1.2 * atr
         risk = max(sl - entry, 0.01)
-        t1 = entry - (1.5 * risk)
-        t2 = entry - (2.2 * risk)
-        rr = (entry - t2) / risk
-        trend = "BEARISH"
+        t1 = entry - 1.5 * risk
+        t2 = entry - 2.2 * risk
     else:
-        entry = price
-        sl = price
-        t1 = price
-        t2 = price
-        rr = 0
-        trend = "SIDEWAYS"
+        entry = sl = t1 = t2 = price
 
     return {
         "name": name,
         "ticker": ticker,
-        "price": round(price, 2),
-        "change": round(pct, 2),
+        "sector": sector,
+        "price": round(price,2),
         "signal": signal,
-        "confidence": confidence,
-        "score": score,
-        "entry": round(entry, 2),
-        "sl": round(sl, 2),
-        "t1": round(t1, 2),
-        "t2": round(t2, 2),
-        "rr": round(rr, 2),
-        "rsi": round(rsi, 1),
-        "vwap": round(vwap, 2),
-        "ema9": round(ema9, 2),
-        "ema20": round(ema20, 2),
-        "vol_ratio": round(vol_ratio, 2),
-        "reason": " • ".join(reasons[:5]),
-        "trend": trend
+        "score": int(score),
+        "confidence": int(confidence),
+        "entry": round(entry,2),
+        "sl": round(sl,2),
+        "t1": round(t1,2),
+        "t2": round(t2,2),
+        "rsi": round(rsi,1),
+        "vol_ratio": round(vol_ratio,2),
+        "reason": " + ".join(why[:4]) if why else "स्पष्ट कारण मिळाले नाही",
+        "news": news_text,
+        "headlines": headlines,
     }
 
+def analyze_delivery(name, ticker, sector):
+    df = get_daily(ticker, "6mo")
+    news_score, news_text, headlines = get_news_sentiment(ticker)
 
+    if df.empty or len(df) < 60:
+        return {
+            "name": name, "ticker": ticker, "signal": "WAIT",
+            "score": 0, "confidence": 25, "price": 0, "target": 0,
+            "support": 0, "reason": "डेटा अपुरा आहे", "news": news_text
+        }
 
-def marathi_action(signal):
+    close = df["Close"].astype(float)
+    price = sf(close.iloc[-1])
+
+    ema20 = close.ewm(span=20, adjust=False).mean()
+    ema50 = close.ewm(span=50, adjust=False).mean()
+    ema200 = close.ewm(span=200, adjust=False).mean()
+
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    ag = gain.ewm(alpha=1/14, adjust=False).mean()
+    al = loss.ewm(alpha=1/14, adjust=False).mean()
+    rs = ag / al.replace(0, np.nan)
+    rsi = sf((100 - (100/(1+rs))).iloc[-1], 50)
+
+    score = 0
+    why = []
+
+    if price > sf(ema20.iloc[-1]):
+        score += 1
+    else:
+        score -= 1
+
+    if sf(ema20.iloc[-1]) > sf(ema50.iloc[-1]):
+        score += 2
+        why.append("मध्यम काळाचा कल वरचा")
+    else:
+        score -= 2
+
+    if len(ema200.dropna()) > 0:
+        if price > sf(ema200.iloc[-1]):
+            score += 1
+        else:
+            score -= 1
+
+    if 50 <= rsi <= 68:
+        score += 1
+    elif rsi > 75:
+        score -= 1
+
+    sec = sector_change.get(sector, 0)
+    if sec > 0.4:
+        score += 1
+        why.append("क्षेत्र मजबूत")
+    elif sec < -0.4:
+        score -= 1
+
+    if market_mood == "BULLISH":
+        score += 1
+    elif market_mood == "BEARISH":
+        score -= 1
+
+    score += news_score
+    if news_score > 0:
+        why.append("बातम्या चांगल्या")
+    elif news_score < 0:
+        why.append("बातम्या नकारात्मक")
+
+    if score >= 5:
+        signal = "BUY"
+    elif score <= -4:
+        signal = "AVOID"
+    else:
+        signal = "WAIT"
+
+    confidence = min(92, 50 + abs(score)*7) if signal != "WAIT" else 40
+
+    recent_low = sf(df["Low"].tail(20).min())
+    recent_high = sf(df["High"].tail(20).max())
+    support = recent_low
+    target = max(recent_high, price * 1.06) if signal == "BUY" else price
+
     return {
-        "STRONG BUY": "🟢 आता खरेदीसाठी मजबूत संधी",
-        "BUY": "🟢 खरेदीची संधी",
-        "STRONG SELL": "🔴 आता SHORT SELL साठी मजबूत संधी",
-        "SELL": "🔴 SHORT SELL ची संधी",
-        "WAIT": "🟡 आत्ता काही करू नका"
-    }.get(signal, "🟡 आत्ता काही करू नका")
+        "name": name,
+        "ticker": ticker,
+        "signal": signal,
+        "score": int(score),
+        "confidence": int(confidence),
+        "price": round(price,2),
+        "target": round(target,2),
+        "support": round(support,2),
+        "reason": " + ".join(why[:3]) if why else "मिश्र संकेत",
+        "news": news_text
+    }
 
+# =========================================================
+# MARKET SUMMARY
+# =========================================================
+st.markdown("## ☀️ आजचा आपला प्लॅन")
 
-def simple_reason(row):
-    reasons = []
-    if row["trend"] == "BULLISH":
-        reasons.append("शेअर वरच्या दिशेने मजबूत दिसतोय")
-    elif row["trend"] == "BEARISH":
-        reasons.append("शेअरवर विक्रीचा दबाव दिसतोय")
+if market_mood == "BULLISH":
+    klass = "bull"
+elif market_mood == "BEARISH":
+    klass = "bear"
+else:
+    klass = "neutral"
 
-    if row["vol_ratio"] >= 1.5:
-        reasons.append("नेहमीपेक्षा जास्त व्यवहार होत आहेत")
-    if row["rsi"] >= 55 and row["rsi"] <= 72:
-        reasons.append("खरेदीची ताकद चांगली आहे")
-    elif row["rsi"] <= 45 and row["rsi"] >= 28:
-        reasons.append("विक्रीची ताकद जास्त आहे")
+st.markdown(
+    f"<div class='banner {klass}'>{market_text} | धोका: {risk_level} | Market Score: {market_score}</div>",
+    unsafe_allow_html=True
+)
 
-    if not reasons:
-        reasons.append("सिग्नल अजून पुरेसा मजबूत नाही")
-    return " + ".join(reasons[:3])
+if market_reasons:
+    st.caption("कारण: " + " + ".join(market_reasons[:4]))
 
-
-def simple_trade_card(r, short=False):
-    if r["signal"] == "WAIT":
-        return f"""
-        <div class="signal-card">
-            <div class="wait">{r['name']} — 🟡 आत्ता काही करू नका</div>
-            <div style="color:#fff;font-size:20px;font-weight:800;">सध्याचा भाव ₹{r['price']}</div>
-            <div style="color:#cbd5e1;font-size:14px;margin-top:8px;">
-                योग्य संधीची वाट पहा.<br>
-                <b>आपला संकेत:</b> {r['confidence']}/100
+# Macro cards
+st.markdown("### 🌍 बाजारावर परिणाम करणाऱ्या मुख्य गोष्टी")
+macro_cols = st.columns(3)
+labels = list(macro.keys())
+for i, label in enumerate(labels):
+    m = macro[label]
+    cls = "green" if m["change"] >= 0 else "red"
+    with macro_cols[i % 3]:
+        st.markdown(
+            f"""
+            <div class="card">
+                <div class="title-blue">{label}</div>
+                <div class="big">{m['price']:,.2f}</div>
+                <div class="{cls}">{m['change']:+.2f}%</div>
             </div>
-        </div>
-        """
+            """,
+            unsafe_allow_html=True
+        )
 
-    if not short:
-        return f"""
-        <div class="signal-card">
-            <div class="buy">{r['name']} — 🟢 खरेदीची संधी</div>
-            <div style="color:#fff;font-size:20px;font-weight:800;">या भावाजवळ घ्या: ₹{r['entry']}</div>
-            <div style="color:#cbd5e1;font-size:14px;margin-top:8px;">
-                💰 ₹{r['t1']} जवळ काही नफा घ्या<br>
-                🎯 ₹{r['t2']} जवळ उरलेला नफा घ्या<br>
-                🛑 पण भाव ₹{r['sl']} पर्यंत खाली आला तर बाहेर पडा<br>
-                ⭐ <b>आपला संकेत:</b> {r['confidence']}/100<br>
-                💡 <b>का?</b> {simple_reason(r)}
-            </div>
-        </div>
-        """
+st.write("---")
+
+# =========================================================
+# SCAN
+# =========================================================
+st.markdown("## ⚡ आजचे Intraday व्यवहार")
+
+scan_limit = st.slider(
+    "एका वेळी किती शेअर्स तपासायचे?",
+    min_value=10,
+    max_value=len(stocks),
+    value=min(20, len(stocks)),
+    step=5
+)
+
+selected_items = list(stocks.items())[:scan_limit]
+
+with st.spinner("Market + sector + technical + volume + news एकत्र तपासत आहे..."):
+    intraday_rows = []
+    for name, (ticker, sector) in selected_items:
+        intraday_rows.append(analyze_intraday(name, ticker, sector))
+
+idf = pd.DataFrame(intraday_rows)
+
+buy_df = idf[idf["signal"].isin(["BUY","STRONG BUY"])].sort_values(
+    ["score","confidence"], ascending=False
+).head(3)
+
+sell_df = idf[idf["signal"].isin(["SELL","STRONG SELL"])].sort_values(
+    ["score","confidence"], ascending=True
+).head(3)
+
+def render_buy(r):
     return f"""
-    <div class="signal-card">
-        <div class="sell">{r['name']} — 🔴 SHORT SELL ची संधी</div>
-        <div style="color:#fff;font-size:20px;font-weight:800;">या भावाजवळ SELL करा: ₹{r['entry']}</div>
-        <div style="color:#cbd5e1;font-size:14px;margin-top:8px;">
-            💰 भाव ₹{r['t1']} पर्यंत खाली आला तर काही नफा घ्या<br>
-            🎯 ₹{r['t2']} पर्यंत खाली आला तर उरलेला नफा घ्या<br>
-            🛑 पण भाव ₹{r['sl']} पर्यंत वर गेला तर बाहेर पडा<br>
-            ⭐ <b>आपला संकेत:</b> {r['confidence']}/100<br>
-            💡 <b>का?</b> {simple_reason(r)}
+    <div class="hero">
+        <div class="green">{r['name']} — 🟢 खरेदीची संधी</div>
+        <div class="big">या भावाजवळ घ्या: ₹{r['entry']}</div>
+        <div class="small">
+            💰 ₹{r['t1']} जवळ काही नफा घ्या<br>
+            🎯 ₹{r['t2']} जवळ उरलेला नफा घ्या<br>
+            🛑 पण ₹{r['sl']} पर्यंत खाली आला तर बाहेर पडा<br>
+            ⭐ संकेत: {r['confidence']}/100<br>
+            💡 का? {r['reason']}<br>
+            📰 {r['news']}
         </div>
     </div>
     """
 
-# -----------------------------
-# MARKET MACRO
-# -----------------------------
-with st.spinner("Market data load होत आहे..."):
-    sp_p, sp_c = get_market_data("^GSPC")
-    nas_p, nas_c = get_market_data("^IXIC")
-    crude_p, crude_c = get_market_data("CL=F")
-    gold_p, gold_c = get_market_data("GC=F")
-    nifty_p, nifty_c = get_market_data("^NSEI")
-    bank_p, bank_c = get_market_data("^NSEBANK")
-    vix_p, vix_c = get_market_data("^INDIAVIX")
-    nbees_p, nbees_c = get_market_data("NIFTYBEES.NS")
+def render_sell(r):
+    return f"""
+    <div class="hero">
+        <div class="red">{r['name']} — 🔴 SHORT SELL ची संधी</div>
+        <div class="big">या भावाजवळ SELL करा: ₹{r['entry']}</div>
+        <div class="small">
+            💰 ₹{r['t1']} पर्यंत खाली आला तर काही नफा घ्या<br>
+            🎯 ₹{r['t2']} पर्यंत खाली आला तर उरलेला नफा घ्या<br>
+            🛑 पण ₹{r['sl']} पर्यंत वर गेला तर बाहेर पडा<br>
+            ⭐ संकेत: {r['confidence']}/100<br>
+            💡 का? {r['reason']}<br>
+            📰 {r['news']}
+        </div>
+    </div>
+    """
 
-score = 0
-if sp_c > 0.2:
-    score += 2
-elif sp_c < -0.2:
-    score -= 2
+c1, c2 = st.columns(2)
 
-if nas_c > 0.2:
-    score += 1
-elif nas_c < -0.2:
-    score -= 1
+with c1:
+    st.markdown("### 🟢 आज खरेदीसाठी")
+    if buy_df.empty:
+        st.info("आज मजबूत खरेदीची संधी दिसत नाही. घाई करू नका.")
+    else:
+        for _, r in buy_df.iterrows():
+            st.markdown(render_buy(r), unsafe_allow_html=True)
 
-if crude_c > 1.5:
-    score -= 2
-elif crude_c < -1.5:
-    score += 2
+with c2:
+    st.markdown("### 🔴 आज SHORT SELL साठी")
+    if sell_df.empty:
+        st.info("आज मजबूत SHORT SELL संधी दिसत नाही.")
+    else:
+        for _, r in sell_df.iterrows():
+            st.markdown(render_sell(r), unsafe_allow_html=True)
 
-if vix_c > 5:
-    score -= 2
-elif vix_c < -5:
-    score += 1
+# =========================================================
+# DELIVERY
+# =========================================================
+st.write("---")
+st.markdown("## 📦 काही दिवसांसाठी घेण्यास योग्य शेअर्स")
 
-if nifty_c > 0.35:
-    score += 1
-elif nifty_c < -0.35:
-    score -= 1
+with st.spinner("Delivery साठी trend + sector + news तपासत आहे..."):
+    delivery_rows = []
+    for name, (ticker, sector) in selected_items:
+        delivery_rows.append(analyze_delivery(name, ticker, sector))
 
-if bank_c > 0.35:
-    score += 1
-elif bank_c < -0.35:
-    score -= 1
+ddf = pd.DataFrame(delivery_rows)
 
-b1, b2 = st.columns([2, 1])
+delivery_buy = ddf[ddf["signal"] == "BUY"].sort_values(
+    ["score","confidence"], ascending=False
+).head(3)
 
-if score >= 3:
-    market_mood = "BULLISH"
-    banner = "<div class='status-banner bullish-bg'>🟢 MARKET REGIME: BULLISH</div>"
-    action = "BUY setups ला preference द्या. Confirmation शिवाय entry घेऊ नका."
-elif score <= -3:
-    market_mood = "BEARISH"
-    banner = "<div class='status-banner bearish-bg'>🔴 MARKET REGIME: BEARISH</div>"
-    action = "SELL/SHORT setups ला preference द्या. Strong stocks short करू नका."
+if delivery_buy.empty:
+    st.info("सध्या Delivery साठी पुरेशी मजबूत संधी मिळाली नाही.")
 else:
-    market_mood = "NEUTRAL"
-    banner = "<div class='status-banner neutral-bg'>🟡 MARKET REGIME: SIDEWAYS / NEUTRAL</div>"
-    action = "Selective trades. High-confidence setup नसेल तर NO TRADE."
+    dcols = st.columns(min(3, len(delivery_buy)))
+    for i, (_, r) in enumerate(delivery_buy.iterrows()):
+        with dcols[i]:
+            st.markdown(
+                f"""
+                <div class="card">
+                    <div class="green">{r['name']} — काही दिवसांसाठी विचार करा</div>
+                    <div class="big">सध्याचा भाव ₹{r['price']}</div>
+                    <div class="small">
+                        🎯 अंदाजे लक्ष्य ₹{r['target']}<br>
+                        🛑 ₹{r['support']} खाली गेल्यास पुन्हा विचार करा<br>
+                        ⭐ संकेत: {r['confidence']}/100<br>
+                        💡 {r['reason']}<br>
+                        📰 {r['news']}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
-with b1:
-    st.markdown(banner, unsafe_allow_html=True)
-with b2:
-    st.info(f"🎯 **Action Plan**\n\n{action}\n\n**Market Score:** {score}")
-
-st.markdown("### 🌐 Global & Domestic Macro Indicators")
-r1 = st.columns(4)
-r2 = st.columns(4)
-
-cards = [
-    ("🇺🇸 S&P 500", f"{sp_p:,.2f}", sp_c, False),
-    ("🇺🇸 NASDAQ", f"{nas_p:,.2f}", nas_c, False),
-    ("🛢️ CRUDE OIL", f"${crude_p:,.2f}", crude_c, True),
-    ("🟡 GOLD", f"${gold_p:,.2f}", gold_c, False),
-    ("🇮🇳 NIFTY 50", f"{nifty_p:,.2f}", nifty_c, False),
-    ("🏦 BANK NIFTY", f"{bank_p:,.2f}", bank_c, False),
-    ("⚠️ INDIA VIX", f"{vix_p:,.2f}", vix_c, True),
-    ("📈 NIFTYBEES", f"₹{nbees_p:,.2f}", nbees_c, False),
-]
-
-for i, item in enumerate(cards[:4]):
-    with r1[i]:
-        st.markdown(draw_card(*item), unsafe_allow_html=True)
-
-for i, item in enumerate(cards[4:]):
-    with r2[i]:
-        st.markdown(draw_card(*item), unsafe_allow_html=True)
-
+# =========================================================
+# FULL TABLE
+# =========================================================
 st.write("---")
+st.markdown("## 📊 सर्व तपासलेले शेअर्स")
+st.caption("हा भाग technical माहिती पाहायची असल्यास वापरा. मुख्य निर्णय वर दिले आहेत.")
 
-# -----------------------------
-# STOCK UNIVERSE
-# -----------------------------
-stocks_map = {
-    "Tata Steel": "TATASTEEL.NS",
-    "BEL": "BEL.NS",
-    "ONGC": "ONGC.NS",
-    "ITC": "ITC.NS",
-    "Wipro": "WIPRO.NS",
-    "Coal India": "COALINDIA.NS",
-    "Power Grid": "POWERGRID.NS",
-    "SBI": "SBIN.NS",
-    "HDFC Bank": "HDFCBANK.NS",
-    "ICICI Bank": "ICICIBANK.NS",
-    "Infosys": "INFY.NS",
-    "Reliance": "RELIANCE.NS",
-    "TCS": "TCS.NS",
-    "Larsen & Toubro": "LT.NS",
-}
-
-st.markdown("### ⚡ Intraday Technical Scanner")
-
-filter_choice = st.radio(
-    "शेअर्स फिल्टर:",
-    ["सर्व शेअर्स", "Under ₹700"],
-    horizontal=True
-)
-
-with st.spinner("VWAP, EMA, RSI आणि Volume analyse होत आहेत..."):
-    rows = [analyze_stock(name, ticker, market_mood) for name, ticker in stocks_map.items()]
-
-sdf = pd.DataFrame(rows)
-
-if filter_choice == "Under ₹700":
-    sdf = sdf[sdf["price"] <= 700].copy()
-
-# -----------------------------
-# TOP OPPORTUNITIES
-# -----------------------------
-st.markdown("### ⭐ आजच्या सर्वात चांगल्या संधी")
-
-buys = sdf[sdf["signal"].isin(["BUY", "STRONG BUY"])].sort_values(
-    ["score", "confidence"], ascending=False
-).head(3)
-
-sells = sdf[sdf["signal"].isin(["SELL", "STRONG SELL"])].sort_values(
-    ["score", "confidence"], ascending=True
-).head(3)
-
-c_buy, c_sell = st.columns(2)
-
-with c_buy:
-    st.markdown("#### 🟢 आज खरेदीसाठी")
-    if buys.empty:
-        st.info("सध्या खरेदीसाठी पुरेशी मजबूत संधी नाही. घाई करू नका.")
-    else:
-        for _, r in buys.iterrows():
-            st.markdown(simple_trade_card(r, short=False), unsafe_allow_html=True)
-
-with c_sell:
-    st.markdown("#### 🔴 आज SHORT SELL साठी")
-    if sells.empty:
-        st.info("सध्या SHORT SELL साठी पुरेशी मजबूत संधी नाही.")
-    else:
-        for _, r in sells.iterrows():
-            st.markdown(simple_trade_card(r, short=True), unsafe_allow_html=True)
-
-# -----------------------------
-# FULL SCANNER TABLE
-# -----------------------------
-st.markdown("### 📊 सर्व शेअर्स — सविस्तर माहिती")
-st.caption("हा भाग फक्त अधिक माहिती हवी असल्यास पहा. वरचा हिरवा/लाल निर्णय भाग मुख्य आहे.")
-
-display_df = sdf[[
-    "name", "price", "change", "signal", "confidence", "score",
-    "rsi", "vwap", "ema9", "ema20", "vol_ratio",
-    "entry", "sl", "t1", "t2", "rr"
-]].copy()
-
-display_df.columns = [
-    "Stock", "CMP", "% Chg", "Signal", "Confidence %", "Score",
-    "RSI", "VWAP", "EMA9", "EMA20", "Vol x",
-    "Entry", "SL", "T1", "T2", "R:R"
+show_cols = [
+    "name","price","signal","confidence","score","sector",
+    "rsi","vol_ratio","entry","sl","t1","t2","news"
 ]
+table = idf[show_cols].copy()
+table.columns = [
+    "शेअर","भाव","निर्णय","संकेत /100","Score","Sector",
+    "RSI","Volume x","घ्यायचा/SELL भाव","बाहेर पडायचा भाव","नफा 1","नफा 2","बातम्या"
+]
+st.dataframe(table, use_container_width=True, hide_index=True)
 
-st.dataframe(
-    display_df,
-    use_container_width=True,
-    hide_index=True
-)
-
-# -----------------------------
-# RISK CALCULATOR
-# -----------------------------
+# =========================================================
+# RISK / QUANTITY
+# =========================================================
 st.write("---")
-st.markdown("### 🛡️ किती शेअर्स घ्यायचे?")
+st.markdown("## 🛡️ किती शेअर्स घ्यायचे?")
 
-rc1, rc2, rc3 = st.columns(3)
+if not idf.empty:
+    r1, r2, r3 = st.columns(3)
+    with r1:
+        capital = st.number_input("ट्रेडसाठी तुमची रक्कम ₹", min_value=1000.0, value=50000.0, step=1000.0)
+    with r2:
+        risk_pct = st.number_input("एका व्यवहारात जास्तीत जास्त धोका %", min_value=0.1, max_value=5.0, value=1.0, step=0.1)
+    with r3:
+        sel = st.selectbox("शेअर", idf["name"].tolist())
 
-with rc1:
-    capital = st.number_input(
-        "तुमच्याकडे ट्रेडसाठी रक्कम ₹",
-        min_value=1000.0,
-        value=50000.0,
-        step=1000.0
-    )
-
-with rc2:
-    risk_pct = st.number_input(
-        "एका व्यवहारात जास्तीत जास्त किती % धोका घ्यायचा",
-        min_value=0.1,
-        max_value=5.0,
-        value=1.0,
-        step=0.1
-    )
-
-with rc3:
-    selected_stock = st.selectbox(
-        "Stock",
-        sdf["name"].tolist() if not sdf.empty else list(stocks_map.keys())
-    )
-
-if not sdf.empty:
-    selected = sdf[sdf["name"] == selected_stock].iloc[0]
-
-    risk_amount = capital * risk_pct / 100
-    per_share_risk = abs(float(selected["entry"]) - float(selected["sl"]))
+    rr = idf[idf["name"] == sel].iloc[0]
+    risk_amt = capital * risk_pct / 100
+    per_share_risk = abs(sf(rr["entry"]) - sf(rr["sl"]))
 
     if per_share_risk > 0:
-        qty_by_risk = int(risk_amount / per_share_risk)
-        qty_by_capital = int(capital / max(float(selected["entry"]), 0.01))
-        qty = max(0, min(qty_by_risk, qty_by_capital))
+        qty_by_risk = int(risk_amt / per_share_risk)
+        qty_by_cap = int(capital / max(sf(rr["entry"]), 0.01))
+        qty = max(0, min(qty_by_risk, qty_by_cap))
     else:
         qty = 0
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("जास्तीत जास्त नुकसान मर्यादा ₹", f"{risk_amount:,.0f}")
-    m2.metric("सुचवलेली संख्या", qty)
-    m3.metric("घ्यायचा/विकायचा भाव", f"₹{selected['entry']}")
-    m4.metric("इथे पोहोचल्यास बाहेर पडा", f"₹{selected['sl']}")
+    q1, q2, q3, q4 = st.columns(4)
+    q1.metric("जास्तीत जास्त नुकसान मर्यादा", f"₹{risk_amt:,.0f}")
+    q2.metric("सुचवलेली संख्या", qty)
+    q3.metric("भाव", f"₹{rr['entry']}")
+    q4.metric("इथे बाहेर पडा", f"₹{rr['sl']}")
 
-# -----------------------------
-# STOCK DETAIL
-# -----------------------------
+# =========================================================
+# NEWS DETAILS
+# =========================================================
 st.write("---")
-st.markdown("### 🔎 एखादा शेअर तपासून पहा")
+st.markdown("## 📰 एखाद्या शेअरच्या बातम्या")
+news_stock = st.selectbox("शेअर निवडा", idf["name"].tolist(), key="news_stock")
 
-detail_name = st.selectbox(
-    "शेअर निवडा",
-    list(stocks_map.keys()),
-    key="detail_stock"
-)
+nr = idf[idf["name"] == news_stock].iloc[0]
+st.info(nr["news"])
 
-detail_ticker = stocks_map[detail_name]
-detail = analyze_stock(detail_name, detail_ticker, market_mood)
-detail_df = get_intraday_data(detail_ticker)
+for h in nr["headlines"]:
+    st.write("•", h)
 
-d1, d2, d3, d4 = st.columns(4)
-d1.metric("Signal", detail["signal"])
-d2.metric("Confidence", f"{detail['confidence']}%")
-d3.metric("RSI", detail["rsi"])
-d4.metric("Volume Ratio", f"{detail['vol_ratio']}x")
-
-if not detail_df.empty:
-    chart_df = detail_df[["Close", "VWAP", "EMA9", "EMA20"]].tail(80).copy()
-    st.line_chart(chart_df, use_container_width=True)
-
-    st.caption(
-        f"Entry ₹{detail['entry']} | SL ₹{detail['sl']} | "
-        f"T1 ₹{detail['t1']} | T2 ₹{detail['t2']} | R:R {detail['rr']}"
-    )
-
-# -----------------------------
-# FOOTER / DISCLAIMER
-# -----------------------------
+# =========================================================
+# FOOTER
+# =========================================================
 st.write("---")
 st.warning(
-    "⚠️ महत्त्वाचे: तुम्ही नवीन असाल तर सुरुवातीला कमी रकमेने/पेपर ट्रेडिंगने सराव करा. हा dashboard educational / decision-support purpose साठी आहे. "
-    "Signals हे market data आणि technical indicators वर आधारित आहेत; "
-    "profit guarantee नाही. स्वतःचे risk management आणि broker data verify करा."
+    "⚠️ महत्त्वाचे: हा dashboard निर्णय घेण्यासाठी मदत करणारे tool आहे; नफा हमी देत नाही. "
+    "तुम्ही नवीन असाल तर सुरुवातीला paper trading किंवा कमी रकमेने सराव करा. "
+    "Intraday मध्ये broker चा live भाव आणि order execute होण्यापूर्वी Stop Loss जरूर तपासा."
 )
 
 if st.button("🔄 डेटा त्वरित रिफ्रेश करा"):
